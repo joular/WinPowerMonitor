@@ -135,7 +135,6 @@ float getRAPLEnergy() {
 
     if (psys) {
         if (!getDataFromDriver(MSR_PLATFORM_ENERGY_STATUS, &replyData, &replyLength)) {
-            cout << "not" << endl;
             return 0.0;
         }
         const UINT32 rawPSYSEnergy = replyData & 0xFFFFFFFF;
