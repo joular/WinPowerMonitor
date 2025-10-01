@@ -1,0 +1,17 @@
+[package]
+name = "WinPowerMonitorRS"
+version = "0.1.0"
+authors = ["Adel Noureddine"]
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Power Monitor for Windows is a command line tool that read CPU's power consumption through RAPL's MSRs, and provides the power consumption of the CPU every second"
+repository = "https://github.com/joular/WinPowerMonitorRS"
+
+[dependencies]
+windows = { version = "0.62.1", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_Security",
+] }
+ctrlc = "3.5.0"
