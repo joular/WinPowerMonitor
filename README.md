@@ -7,6 +7,8 @@ The easiest way to install the driver is to install the windows version of [Scap
 
 Power Monitor for Windows was initially developed as part of [JoularJX](https://github.com/joular/joularjx), but is now its separate project.
 
+An experimental rewrite in Rust of Power Monitor for Windows, is available at ou new repo [WinPowerMonitorRS](https://github.com/joular/WinPowerMonitorRS), and can be used instead of this C++ version.
+
 ## :bulb: Usage
 
 Just run the program in command line, or run the executable.
@@ -29,3 +31,4 @@ All rights reserved. This program and the accompanying materials are made availa
 
 
 Author : Adel Noureddine
+
