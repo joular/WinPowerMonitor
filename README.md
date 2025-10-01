@@ -3,6 +3,7 @@
 Power Monitor for Windows is a command line tool that read CPU's power consumption through RAPL's MSRs, and provides the power consumption of the CPU every second.
 
 Power Monitor for Windows depends on the [Windows RAPL driver by Hubblo](https://github.com/hubblo-org/windows-rapl-driver), and therefore require installing the driver first, and runs on Intel or AMD CPUs (since Ryzen).
+The easiest way to install the driver is to install the windows version of [Scaphandre](https://github.com/hubblo-org/scaphandre) tool from [this link directly](https://github.com/hubblo-org/scaphandre/releases/download/v1.0.0/scaphandre_v1.0.0_installer.exe) (release 1.0.0).
 
 Power Monitor for Windows was initially developed as part of [JoularJX](https://github.com/joular/joularjx), but is now its separate project.
 
@@ -25,5 +26,6 @@ Power Monitor for Windows is licensed under the GNU GPL 3 license only (GPL-3.0-
 
 Copyright (c) 2024, Adel Noureddine, Université de Pau et des Pays de l'Adour.
 All rights reserved. This program and the accompanying materials are made available under the terms of the GNU General Public License v3.0 only (GPL-3.0-only) which accompanies this distribution, and is available at: https://www.gnu.org/licenses/gpl-3.0.en.html
+
 
 Author : Adel Noureddine
