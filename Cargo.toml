@@ -1,5 +1,5 @@
 [package]
-name = "WinPowerMonitorRS"
+name = "WinPowerMonitor"
 version = "0.1.0"
 authors = ["Adel Noureddine"]
 edition = "2024"

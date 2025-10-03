@@ -14,11 +14,15 @@ use windows::Win32::Foundation::*;
 use windows::Win32::Storage::FileSystem::*;
 use windows::Win32::System::IO::DeviceIoControl;
 
-// RAPL MSR addresses
-const MSR_RAPL_POWER_UNIT: u64 = 0x606;
-const MSR_PKG_ENERGY_STATUS: u64 = 0x611;
-const MSR_DRAM_ENERGY_STATUS: u64 = 0x619;
-const MSR_PLATFORM_ENERGY_STATUS: u64 = 0x64d;
+// RAPL MSR addresses for Intel
+const MSR_INTEL_RAPL_POWER_UNIT: u64 = 0x606;
+const MSR_INTEL_PKG_ENERGY_STATUS: u64 = 0x611;
+const MSR_INTEL_DRAM_ENERGY_STATUS: u64 = 0x619;
+const MSR_INTEL_PLATFORM_ENERGY_STATUS: u64 = 0x64d;
+
+// RAPL MSR addresses for AMD
+const MSR_AMD_RAPL_POWER_UNIT: u64 = 0xc0010299;
+const MSR_AMD_PKG_ENERGY_STATUS: u64 = 0xc001029b;
 
 // CTL_CODE macro implementation
 const fn ctl_code(device_type: u32, function: u32, method: u32, access: u32) -> u32 {
@@ -30,11 +34,18 @@ const METHOD_BUFFERED: u32 = 0;
 const FILE_READ_DATA: u32 = 0x0001;
 const FILE_WRITE_DATA: u32 = 0x0002;
 
+#[derive(Debug, Clone, Copy)]
+enum CpuVendor {
+    Intel,
+    AMD,
+}
+
 pub struct RaplDriver {
     handle: HANDLE,
     power_unit: f64,
     energy_unit: f64,
     time_unit: f64,
+    vendor: CpuVendor,
     psys: bool,
     pkg: bool,
     dram: bool,
@@ -65,21 +76,28 @@ impl RaplDriver {
             power_unit: 0.0,
             energy_unit: 0.0,
             time_unit: 0.0,
+            vendor: CpuVendor::Intel, // Default to Intel, will be detected
             psys: false,
             pkg: false,
             dram: false,
         };
 
+        driver.detect_cpu_vendor()?;
         driver.get_energy_units()?;
         driver.check_supported_platform()?;
 
         Ok(driver)
     }
 
-    fn get_rapl_ctl_code() -> u32 {
+    fn get_rapl_ctl_code(&self) -> u32 {
+        let msr = match self.vendor {
+            CpuVendor::Intel => MSR_INTEL_RAPL_POWER_UNIT,
+            CpuVendor::AMD => MSR_AMD_RAPL_POWER_UNIT,
+        };
+
         ctl_code(
             FILE_DEVICE_UNKNOWN,
-            MSR_RAPL_POWER_UNIT as u32,
+            msr as u32,
             METHOD_BUFFERED,
             FILE_READ_DATA | FILE_WRITE_DATA,
         )
@@ -89,7 +107,7 @@ impl RaplDriver {
         let mut reply_data: u64 = 0;
         let mut bytes_returned: u32 = 0;
 
-        let ctl_code = Self::get_rapl_ctl_code();
+        let ctl_code = self.get_rapl_ctl_code();
 
         unsafe {
             DeviceIoControl(
@@ -107,8 +125,29 @@ impl RaplDriver {
         Ok(reply_data)
     }
 
+    fn detect_cpu_vendor(&mut self) -> Result<()> {
+        // Try Intel first
+        if self.get_data_from_driver(MSR_INTEL_RAPL_POWER_UNIT).is_ok() {
+            self.vendor = CpuVendor::Intel;
+            return Ok(());
+        }
+
+        // Try AMD
+        if self.get_data_from_driver(MSR_AMD_RAPL_POWER_UNIT).is_ok() {
+            self.vendor = CpuVendor::AMD;
+            return Ok(());
+        }
+
+        Err(Error::from_thread())
+    }
+
     fn get_energy_units(&mut self) -> Result<()> {
-        let reply_data = self.get_data_from_driver(MSR_RAPL_POWER_UNIT)?;
+        let msr = match self.vendor {
+            CpuVendor::Intel => MSR_INTEL_RAPL_POWER_UNIT,
+            CpuVendor::AMD => MSR_AMD_RAPL_POWER_UNIT,
+        };
+
+        let reply_data = self.get_data_from_driver(msr)?;
 
         // Time Units
         const TIME_MASK: u64 = 0xF0000;
@@ -129,24 +168,36 @@ impl RaplDriver {
     }
 
     fn check_supported_platform(&mut self) -> Result<()> {
-        // Check for PSYS (Platform) support
-        if let Ok(reply_data) = self.get_data_from_driver(MSR_PLATFORM_ENERGY_STATUS) {
-            if reply_data != 0 {
-                self.psys = true;
-                return Ok(());
-            }
-        }
+        match self.vendor {
+            CpuVendor::Intel => {
+                // Check for PSYS (Platform) support
+                if let Ok(reply_data) = self.get_data_from_driver(MSR_INTEL_PLATFORM_ENERGY_STATUS) {
+                    if reply_data != 0 {
+                        self.psys = true;
+                        return Ok(());
+                    }
+                }
 
-        // If PSYS not supported, check PKG and DRAM
-        if let Ok(reply_data) = self.get_data_from_driver(MSR_PKG_ENERGY_STATUS) {
-            if reply_data != 0 {
-                self.pkg = true;
-            }
-        }
+                // If PSYS not supported, check PKG and DRAM
+                if let Ok(reply_data) = self.get_data_from_driver(MSR_INTEL_PKG_ENERGY_STATUS) {
+                    if reply_data != 0 {
+                        self.pkg = true;
+                    }
+                }
 
-        if let Ok(reply_data) = self.get_data_from_driver(MSR_DRAM_ENERGY_STATUS) {
-            if reply_data != 0 {
-                self.dram = true;
+                if let Ok(reply_data) = self.get_data_from_driver(MSR_INTEL_DRAM_ENERGY_STATUS) {
+                    if reply_data != 0 {
+                        self.dram = true;
+                    }
+                }
+            }
+            CpuVendor::AMD => {
+                // AMD only supports PKG, no DRAM or PSYS
+                if let Ok(reply_data) = self.get_data_from_driver(MSR_AMD_PKG_ENERGY_STATUS) {
+                    if reply_data != 0 {
+                        self.pkg = true;
+                    }
+                }
             }
         }
 
@@ -154,25 +205,43 @@ impl RaplDriver {
     }
 
     pub fn get_rapl_energy(&self) -> Result<f64> {
+        match self.vendor {
+            CpuVendor::Intel => self.get_intel_energy(),
+            CpuVendor::AMD => self.get_amd_energy(),
+        }
+    }
+
+    fn get_intel_energy(&self) -> Result<f64> {
         if self.psys {
-            let reply_data = self.get_data_from_driver(MSR_PLATFORM_ENERGY_STATUS)?;
+            let reply_data = self.get_data_from_driver(MSR_INTEL_PLATFORM_ENERGY_STATUS)?;
             let raw_psys_energy = (reply_data & 0xFFFFFFFF) as u32;
             let psys_energy = raw_psys_energy as f64 * self.energy_unit;
             return Ok(psys_energy);
         }
 
         if self.pkg {
-            let reply_data = self.get_data_from_driver(MSR_PKG_ENERGY_STATUS)?;
+            let reply_data = self.get_data_from_driver(MSR_INTEL_PKG_ENERGY_STATUS)?;
             let raw_pkg_energy = (reply_data & 0xFFFFFFFF) as u32;
             let pkg_energy = raw_pkg_energy as f64 * self.energy_unit;
 
             if self.dram {
-                let reply_data = self.get_data_from_driver(MSR_DRAM_ENERGY_STATUS)?;
+                let reply_data = self.get_data_from_driver(MSR_INTEL_DRAM_ENERGY_STATUS)?;
                 let raw_dram_energy = (reply_data & 0xFFFFFFFF) as u32;
                 let dram_energy = raw_dram_energy as f64 * self.energy_unit;
                 return Ok(pkg_energy + dram_energy);
             }
 
+            return Ok(pkg_energy);
+        }
+
+        Ok(0.0)
+    }
+
+    fn get_amd_energy(&self) -> Result<f64> {
+        if self.pkg {
+            let reply_data = self.get_data_from_driver(MSR_AMD_PKG_ENERGY_STATUS)?;
+            let raw_pkg_energy = (reply_data & 0xFFFFFFFF) as u32;
+            let pkg_energy = raw_pkg_energy as f64 * self.energy_unit;
             return Ok(pkg_energy);
         }
 
